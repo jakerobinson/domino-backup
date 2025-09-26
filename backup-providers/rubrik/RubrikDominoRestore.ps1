@@ -122,8 +122,11 @@ If(Test-Path .\$TagPath) {
         restoreFailed
     }
 
-    # Get Rubrik and VMware VM objects using MOID
-    $rubrikVm = (Invoke-RubrikRESTCall -API 1 -method GET -endpoint "vmware/vm" -Query @{"moid" = $moid}).data[0]
+    # Get Rubrik and VMware VM objects using MOID. 
+    # We need to get the VM twice because getting by MOID and getting by Rubrik ID result in two different object types. 
+    # The VM by ID gives us a detailed VM object, including a list of VMDK IDs
+    $rubrikBaseVm = (Invoke-RubrikRESTCall -API 1 -method GET -endpoint "vmware/vm" -Query @{"moid" = $moid}).data[0]
+    $rubrikVm = Get-RubrikVM -id $rubrikBaseVm.id -DetailedObject
     $vmwareVm = Get-VM -Id "VirtualMachine-$moid"
 
     # Tag Search
@@ -157,19 +160,19 @@ If(Test-Path .\$TagPath) {
     # Get vmdk from drive letter
     # This requires VMware Tools
     $harddrives = $vmwareVm | Get-HardDisk
-    $vmdk = ""
+    $vmdkFileName = ""
     foreach ($hd in $harddrives) {
         if (($hd | Get-VMGuestDisk).DiskPath.Contains($drive)) {
-            $vmdk = $hd.ExtensionData.Backing.FileName
+            $vmdkFileName = $hd.ExtensionData.Backing.FileName
         }
     }
 
     Write-Output "Retrieving snapshot object with ID: $snapshotId"
     $snapshot = Get-RubrikSnapshot -SnapshotId $snapshotId -SnapshotType vmware/vm
 
-    Write-Output "Retrieving VMDK object with ID: $vmdk"
-    $virtualDisks = Invoke-RubrikRESTCall -api internal -method GET -endpoint "vmware/vm/virtual_disk" 
-    $vmdkId = ($virtualDisks.data | Where-Object { $_.filename -contains $vmdk}).id
+    Write-Output "Retrieving VMDK object with name: $vmdkFileName"
+    $virtualDisks = $vm.virtualDiskIds | ForEach-Object {Invoke-RubrikRESTCall -api 1 -method GET -endpoint "vmware/vm/virtual_disk/$_"}
+    $vmdkId = ($virtualDisks | Where-Object { $_.filename -contains $vmdkFileName}).id
 
     Write-Output "Mounting VMDK $vmdkId to $($rubrikVm.name) with snapshot ID: $($snapshot.id)"
     $liveMountPayload = @{
@@ -178,15 +181,16 @@ If(Test-Path .\$TagPath) {
     }
     $mountStatus = Invoke-RubrikRESTCall -api internal -method POST -Endpoint "vmware/vm/snapshot/$($snapshot.id)/mount_disks" -body $liveMountPayload
 
+    Write-Output "Mount Command sent. Waiting for completion."
     Get-RubrikRequest -id $mountStatus.id -Type vmware/vm -WaitForCompletion
     $mountId = (Get-RubrikMount | Where-Object mountRequestId -eq $mountStatus.id).id
     
-    Write-Output "Activating disk"
+    Write-Output "Mount Complete. Activating disk in Guest OS."
     $disk = Get-Disk | Where-Object isOffline -eq $true
     $disk | Set-Disk -isOffline $false
     $newDriveLetter = ($disk | Get-Partition | Where-Object {$_.DriveLetter -ne [char]"`0"}).driveLetter + ":"
 
-    Write-Outout "Saving mount state to $TagPath"
+    Write-Outout "Saving Rubrik mount state to $TagPath"
     $mountData = @{driveLetter = $newDriveLetter; mountId = $mountId}
     $mountData | ConvertTo-Json | Out-File $TagPath
 
