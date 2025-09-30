@@ -126,7 +126,7 @@ If(Test-Path .\$TagPath) {
     # We need to get the VM twice because getting by MOID and getting by Rubrik ID result in two different object types. 
     # The VM by ID gives us a detailed VM object, including a list of VMDK IDs
     $rubrikBaseVm = (Invoke-RubrikRESTCall -API 1 -method GET -endpoint "vmware/vm" -Query @{"moid" = $moid}).data[0]
-    $rubrikVm = Get-RubrikVM -id $rubrikBaseVm.id -DetailedObject
+    $rubrikVm = Get-RubrikVM -id $rubrikBaseVm.id
     $vmwareVm = Get-VM -Id "VirtualMachine-$moid"
 
     # Tag Search
