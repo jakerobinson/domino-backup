@@ -171,7 +171,7 @@ If(Test-Path .\$TagPath) {
     $snapshot = Get-RubrikSnapshot -SnapshotId $snapshotId -SnapshotType vmware/vm
 
     Write-Output "Retrieving VMDK object with name: $vmdkFileName"
-    $virtualDisks = $vm.virtualDiskIds | ForEach-Object {Invoke-RubrikRESTCall -api 1 -method GET -endpoint "vmware/vm/virtual_disk/$_"}
+    $virtualDisks = $rubrikVm.virtualDiskIds | ForEach-Object {Invoke-RubrikRESTCall -api 1 -method GET -endpoint "vmware/vm/virtual_disk/$_"}
     $vmdkId = ($virtualDisks | Where-Object { $_.filename -contains $vmdkFileName}).id
 
     Write-Output "Mounting VMDK $vmdkId to $($rubrikVm.name) with snapshot ID: $($snapshot.id)"
