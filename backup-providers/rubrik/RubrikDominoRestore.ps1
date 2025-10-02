@@ -135,18 +135,20 @@ If(Test-Path .\$TagPath) {
     Write-Output "Performing search for file named $tagFileName on $($rubrikVm.name)..."
 
     $searchResult = $rubrikVm | Find-RubrikFile -SearchString $tagFileName
+    Write-Output $searchResult
 
     # Check for no results or multiple results
     if ($searchResult.total -ne $null) {
         Write-Error -Message "No snapshot found with tag $Tag"
         restoreFailed
     }
-    elseif ($searchResult.count -ne $null) {
+    elseif ($searchResult.count -gt 1) {
         Write-Error -Message "Multiple files ($($searchResult.count)) found with name: $tagFileName"
         restoreFailed
     }
-    elseif ($searchResult.fileVersions.count -ne $null) {
+    elseif ($searchResult.fileVersions.count -gt 1) {
         Write-Error -Message "Multiple snapshots found for file with name: $tagFileName"
+        Write-Output $searchResult.fileVersions
         restoreFailed
     }
     else {
@@ -190,7 +192,7 @@ If(Test-Path .\$TagPath) {
     $disk | Set-Disk -isOffline $false
     $newDriveLetter = ($disk | Get-Partition | Where-Object {$_.DriveLetter -ne [char]"`0"}).driveLetter + ":"
 
-    Write-Outout "Saving Rubrik mount state to $TagPath"
+    Write-Output "Saving Rubrik mount state to $TagPath"
     $mountData = @{driveLetter = $newDriveLetter; mountId = $mountId}
     $mountData | ConvertTo-Json | Out-File $TagPath
 
